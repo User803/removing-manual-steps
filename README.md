@@ -22,7 +22,7 @@ Built with Java 21+, Maven, SQLite, and a five-layer architecture enforced by Ar
 | Persistence | SQLite with foreign keys, `CHECK` constraints, and a partial unique index for active rentals. |
 | Error handling | Display readable errors, log internal failures, and clean up resources. |
 | Logging | Structured events with timestamps, severity, event names, and contextual fields. |
-| Containerization | Docker execution with persistent SQLite storage. |
+| Containerization | Docker execution with persistent SQLite storage and file logs. |
 
 ## Requirements
 
@@ -32,10 +32,10 @@ Built with Java 21+, Maven, SQLite, and a five-layer architecture enforced by Ar
 - Git.
 
 **For Docker**
-- Docker Desktop or Docker Engine with the Docker Compose plugin.
-- An internet connection for initial image and dependency downloads.
+- Docker Desktop (Windows/macOS) or Docker Engine (Linux) with the Docker Compose plugin installed and running.
+- An active internet connection for downloading missing Docker images and Maven dependencies during the initial build.
 
-Docker users do not need Java or Maven installed on their computers.
+Docker users do not need Java, Maven, or SQLite installed on their computers.
 
 ## Running the application
 
@@ -71,100 +71,114 @@ When running locally, the database defaults to `rental-tracker.db` in the workin
 
 ### Option 2: Run with Docker
 
-Docker builds and runs the application in a consistent environment without requiring Java or Maven on your computer. Because Rental Tracker is an interactive command-line application, use `docker compose run` for normal sessions; it connects your terminal directly to the Java process.
+Docker builds and runs the application in a consistent environment without requiring Java or Maven on your computer.
 
-#### Recommended normal flow
+Because Rental Tracker is an interactive command-line application, use `docker compose run` to connect your terminal directly to the Java process.
 
-From the project root, build the image and then start an interactive application session:
+#### Recommended startup command
 
-```bash
-docker compose build
-docker compose run --rm -it app
+From the project root, run:
+
+```powershell
+docker compose run --build --rm app
 ```
 
-The first command builds the application image using the Dockerfile. Docker downloads missing base images and dependencies, and reuses cached build layers where possible. The second command starts the interactive Rental Tracker menu in the current terminal. Enter menu choices such as `1`, `2`, or `3`, then press **Enter**.
+This single command builds the application image if necessary and starts an interactive Rental Tracker session.
 
-The `app` service is defined in `compose.yaml`. It uses `DB_PATH=/data/rental-tracker.db`, mounts the persistent database volume, and removes the temporary application container when the program exits. The named database volume is preserved.
+- `--build` builds the image before starting the container.
+- `--rm` removes the temporary application container when it exits.
+- `app` identifies the application service defined in `compose.yaml`.
 
-#### One-command alternative
+Enter menu choices such as `1`, `2`, or `3`, then press Enter.
 
-For a one-time build-and-run command, users can run:
+Docker reuses cached build layers where possible. Subsequent runs do not necessarily download base images or Maven dependencies again. Changes to `pom.xml`, source files, or other build inputs may require rebuilding. Docker downloads any missing images or dependencies as needed.
 
-```bash
-docker compose run --build --rm -it app
+#### Database and log persistence
+
+The Compose configuration sets the following environment variables:
+
+- `DB_PATH=/data/rental-tracker.db`
+- `RENTAL_TRACKER_LOG_PATH=/logs/rental-tracker.log`
+
+It mounts two named volumes:
+
+| Volume | Container path | Purpose |
+|---|---|---|
+| `rental-tracker-data` | `/data` | SQLite database |
+| `rental-tracker-logs` | `/logs` | Application log file |
+
+Both volumes persist when the temporary application container is removed. This means database records and file logs remain available across application runs.
+
+Each developer has separate local Docker volumes. Data is not automatically shared between computers.
+
+The following command stops Compose-managed services and removes their containers and networks while preserving named volumes:
+
+```powershell
+docker compose down
 ```
 
-This combines the image build and interactive run. It is useful for a first run or after source and build-configuration changes. For subsequent sessions without changes, use the two-step flow above and omit `--build`.
-
-#### When should I rebuild?
-
-| Situation | Command |
-|---|---|
-| First interactive run | `docker compose build` followed by `docker compose run --rm -it app` |
-| Include source or build-configuration changes | `docker compose build` followed by `docker compose run --rm -it app` |
-| Normal interactive run with no changes | `docker compose run --rm -it app` |
-| One-time build and interactive run | `docker compose run --build --rm -it app` |
-
-Docker reuses valid cached build layers where possible. Changes to `pom.xml` can invalidate the Maven dependency layer and require additional downloads. An interrupted build may also need to repeat an incomplete step.
-
-#### Database persistence
-
-The application stores its SQLite database at `/data/rental-tracker.db` inside the container. The Compose configuration mounts a named volume at `/data`.
-
-- The database persists when the application exits and its temporary `docker compose run` container is removed.
-- Each developer has a separate local database volume. Data is not automatically shared between computers.
-- `docker compose down` removes Compose-managed containers and networks but preserves named volumes.
-
-**Warning:** `docker compose down -v` deletes the Compose-managed named volume and its database data. Use it only when you intentionally want to reset the database.
+**Warning:** `docker compose down -v` deletes the Compose-managed named volumes and their data. Use it only when you intentionally want to reset the database and logs.
 
 #### View the application log file
 
-While the application container is still running, open another terminal and find the container:
+While the application container is running, open another terminal and find its container:
 
-```bash
+```powershell
 docker ps
 ```
 
-Then use the displayed container name or ID to open a shell:
+Use the displayed container name or ID to view the most recent log entries:
 
-```bash
-docker exec -it multi-user-rental-tracker-app-run-<id> sh
-```
-
-Inside the container, view the most recent log entries:
-
-```bash
-tail -n 100 /data/rental-tracker.log
+```powershell
+docker exec <container-name-or-id> tail -n 100 /logs/rental-tracker.log
 ```
 
 To follow new log entries continuously:
 
-```bash
-tail -f /data/rental-tracker.log
-```
-
-You can also read the file directly without opening a shell:
-
-```bash
-docker exec multi-user-rental-tracker-app-run-<id> \
-  tail -n 100 /data/rental-tracker.log
+```powershell
+docker exec -it <container-name-or-id> tail -f /logs/rental-tracker.log
 ```
 
 The exact container name may differ, so use the name or ID shown by `docker ps`.
+
+#### Inspect the SQLite database
+
+The runtime container includes the SQLite command-line utility. While the application container is running, open another terminal and execute:
+
+```powershell
+docker exec -it <container-name-or-id> sqlite3 /data/rental-tracker.db
+```
+
+You can then run SQL queries to inspect application data and structured database logs.
+
+For example:
+
+```sql
+SELECT id, occurred_at, level, event_name, user_id
+FROM application_logs
+ORDER BY id DESC
+LIMIT 20;
+```
+
+Exit the SQLite shell with:
+
+```sql
+.exit
+```
 
 #### Troubleshooting
 
 Check the resolved Compose configuration:
 
-```bash
+```powershell
 docker compose config
 ```
 
 If an older Compose container is still running and an interactive session is unavailable, stop it and start a new session:
 
-```bash
+```powershell
 docker compose down
-docker compose run --rm -it app
+docker compose run --build --rm app
 ```
 
 If the application fails to start, inspect the error output before rebuilding or deleting Docker resources.
@@ -172,6 +186,8 @@ If the application fails to start, inspect the error output before rebuilding or
 #### Docker image design
 
 The Dockerfile uses a multi-stage build. Maven and the JDK compiler are used during the build stage, while the final image uses a Java runtime. Maven dependencies are downloaded in a separate build layer so Docker can reuse that layer when the POM remains unchanged.
+
+The runtime image also includes the SQLite command-line utility for database inspection. It is an administrative utility; the Java application accesses SQLite through its JDBC dependency.
 
 ## Project structure
 
@@ -398,7 +414,4 @@ The completed project must include:
 Track completion against the actual implementation and passing tests. Features described in this README should not be considered complete solely because they are documented.
 
 ## Team
-
-- Project lead: Jackson Macharia
-- Team member: Francis Kimani
-- Team member: Fidel Shikokoti
+Jackson Macharia
