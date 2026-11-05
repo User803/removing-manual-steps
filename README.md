@@ -9,7 +9,7 @@ Built with Java 21+, Maven, SQLite, and a five-layer architecture enforced by Ar
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Branches, commits, and pull requests.
 - [`docs/database-design.md`](docs/database-design.md) — Database schema and constraint rationale.
 
-## Featuress
+## Features
 
 | Area | Capabilities |
 |---|---|
